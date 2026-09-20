@@ -1,3 +1,6 @@
+import prisma from "./lib/prisma";
+import authRoutes from "./routes/authRoutes";
+import projectRoutes from "./routes/projectRoutes";
 import express from 'express'
 import cors from 'cors'
 
@@ -7,11 +10,26 @@ const PORT = 5000
 app.use(cors())
 app.use(express.json())
 
-app.get('/api/health', (_req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'PLCM backend is running',
-  })
+app.use('/api/auth', authRoutes)
+app.use('/api/projects', projectRoutes)
+
+
+app.get('/api/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+
+    res.json({
+      status: 'ok',
+      message: 'PLCM backend and database are connected',
+    })
+  } catch (error) {
+    console.error(error)
+
+    res.status(500).json({
+      status: 'error',
+      message: 'Database connection failed',
+    })
+  }
 })
 
 app.listen(PORT, () => {
