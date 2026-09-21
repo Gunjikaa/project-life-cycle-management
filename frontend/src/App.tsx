@@ -7,6 +7,8 @@ import Projects from "./pages/Projects";
 import DashboardLayout from "./layouts/DashboardLayout";
 import Login from "./pages/Login";
 import ProjectDetails from "./pages/ProjectDetails";
+import Users from "./pages/Users";
+import Settings from "./pages/Settings";
 
 function App() {
   return (
@@ -62,6 +64,26 @@ function App() {
     <ProtectedRoute>
       <DashboardLayout>
         <LifecyclePipeline />
+      </DashboardLayout>
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/users"
+  element={
+    <ProtectedRoute>
+      <DashboardLayout>
+        <Users />
+      </DashboardLayout>
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/settings"
+  element={
+    <ProtectedRoute>
+      <DashboardLayout>
+        <Settings />
       </DashboardLayout>
     </ProtectedRoute>
   }
