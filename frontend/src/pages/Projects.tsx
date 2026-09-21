@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-
+import { useNavigate, useSearchParams } from "react-router-dom";
 interface Project {
   id: number;
   projectId: string;
@@ -66,13 +65,16 @@ const getStatus = (phase: string) => {
 };
 
 function Projects() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [search, setSearch] = useState("");
-  const [selectedPhase, setSelectedPhase] = useState("ALL");
+  const [selectedPhase, setSelectedPhase] = useState(
+    searchParams.get("phase") || "ALL"
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchProjects = async () => {
