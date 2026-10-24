@@ -6,8 +6,9 @@ import express from 'express'
 import cors from 'cors'
 import documentRoutes from "./routes/documentRoutes";
 import evaluationClosureRoutes from "./routes/evaluationClosureRoutes";
+import pendingActionRoutes from "./routes/pendingActionRoutes";
 const app = express()
-const PORT = 5000
+const PORT = Number(process.env.PORT) || 5000
 
 app.use(cors())
 app.use(express.json())
@@ -16,6 +17,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/projects', projectRoutes)
 app.use('/api/projects', evaluationClosureRoutes)
 app.use('/api/users', userRoutes)
+app.use('/api/pending-actions', pendingActionRoutes)
 app.use('/api/', documentRoutes)
 app.get('/api/health', async (_req, res) => {
   try {

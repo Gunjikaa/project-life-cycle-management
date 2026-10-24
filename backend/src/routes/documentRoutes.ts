@@ -53,6 +53,53 @@ const upload = multer({
   },
 });
 
+router.get(
+  "/documents",
+  authenticateToken,
+  authorizeRoles("ADMIN", "PROJECT_DIRECTOR", "REVIEWER"),
+  async (_req, res) => {
+    try {
+      const documents = await prisma.document.findMany({
+        select: {
+          id: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          description: true,
+          createdAt: true,
+          project: {
+            select: {
+              id: true,
+              projectId: true,
+              projectName: true,
+            },
+          },
+          workflowActivity: {
+            select: {
+              id: true,
+              activityType: true,
+            },
+          },
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return res.json(documents);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        message: "Failed to fetch document repository.",
+      });
+    }
+  }
+);
+
 router.post(
   "/projects/:projectId/activities/:activityId/documents",
   authenticateToken,
