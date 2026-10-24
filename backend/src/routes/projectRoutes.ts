@@ -93,7 +93,18 @@ router.patch("/:id/lifecycle", authenticateToken, async (req, res) => {
   "MONITORING",
   "CLOSURE",
   "POST_CLOSURE",
+
 ];
+const allowedTransitions: Record<string, string[]> = {
+  PROPOSAL: ["PRE_PROJECT"],
+  PRE_PROJECT: ["AON"],
+  AON: ["SANCTION"],
+  SANCTION: ["EXECUTION"],
+  EXECUTION: ["MONITORING"],
+  MONITORING: ["CLOSURE"],
+  CLOSURE: ["POST_CLOSURE"],
+  POST_CLOSURE: [],
+};
 
 const validPreProjectStages = [
   "PRC",
@@ -139,6 +150,15 @@ if (!currentProject) {
     message: "Project not found.",
   });
 }
+if (
+  currentProject.phase !== phase &&
+  !allowedTransitions[currentProject.phase].includes(phase)
+) {
+  return res.status(400).json({
+    message: `Transition from ${currentProject.phase} to ${phase} is not allowed.`,
+  });
+}
+
 
     const project = await prisma.project.update({
       where: {
@@ -395,7 +415,8 @@ router.post(
 
       const validDecisions = ["APPROVED", "REJECTED", "RETURNED"];
 
-      if (!validDecisions.includes(decision)) {
+      if (typeof decision !== "string" ||
+  !validDecisions.includes(decision)) {
         return res.status(400).json({
           message: "Invalid approval decision.",
         });
@@ -419,7 +440,8 @@ router.post(
         data: {
           workflowActivityId: activityId,
           approverId,
-          decision,
+          decision: decision as "APPROVED" | "REJECTED" | "RETURNED",
+          
           remarks:
             typeof remarks === "string" ? remarks.trim() || null : null,
           decidedAt: new Date(),
@@ -538,6 +560,7 @@ router.get("/:id/reviews", authenticateToken, async (req, res) => {
     });
   }
 });
+
 router.patch(
   "/:id/reviews/:reviewId/complete",
   authenticateToken,
@@ -571,19 +594,77 @@ router.patch(
         });
       }
 
-      const updatedReview = await prisma.review.update({
-        where: { id: reviewId },
-        data: {
-          status: "COMPLETED",
-          completedAt: new Date(),
-          remarks:
-            typeof remarks === "string"
-              ? remarks.trim() || null
-              : review.remarks,
-        },
-      });
+      // Prevent completing the same review twice.
+      if (review.status === "COMPLETED") {
+        return res.status(400).json({
+          message: "This review is already completed.",
+        });
+      }
 
-      return res.json(updatedReview);
+      // Calculate the next review date from the original scheduled date.
+      const nextScheduledAt = new Date(review.scheduledAt);
+      
+
+
+      if (review.reviewType === "PMRB") {
+        nextScheduledAt.setMonth(nextScheduledAt.getMonth() + 3);
+      } else {
+        nextScheduledAt.setMonth(nextScheduledAt.getMonth() + 6);
+      }
+      
+      // Update the completed review and schedule the next review atomically.
+      const updatedReview = await prisma.$transaction(async (tx) => {
+        const completedReview = await tx.review.update({
+          where: { id: reviewId },
+          data: {
+            status: "COMPLETED",
+            completedAt: new Date(),
+            remarks:
+              typeof remarks === "string"
+                ? remarks.trim() || null
+                : review.remarks,
+          },
+        });
+
+        // Avoid creating a duplicate review for the same project,
+        // review type, and scheduled date.
+        const existingNextReview = await tx.review.findFirst({
+          where: {
+            projectId,
+            reviewType: review.reviewType,
+            scheduledAt: nextScheduledAt,
+          },
+        });
+
+        if (!existingNextReview) {
+          await tx.review.create({
+            data: {
+              projectId,
+              reviewType: review.reviewType,
+              scheduledAt: nextScheduledAt,
+              remarks: "Automatically scheduled after the previous review.",
+            },
+          });
+        }
+
+        return completedReview;
+      });
+      const savedReviews = await prisma.review.findMany({
+  where: {
+    projectId,
+    reviewType: review.reviewType,
+  },
+  orderBy: {
+    scheduledAt: "asc",
+  },
+});
+
+
+      return res.json({
+        message: "Review completed and next review scheduled.",
+        review: updatedReview,
+        nextScheduledAt,
+      });
     } catch (error) {
       console.error(error);
 
@@ -593,4 +674,5 @@ router.patch(
     }
   }
 );
+
 export default router;

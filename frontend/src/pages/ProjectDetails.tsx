@@ -488,10 +488,15 @@ const submitApproval = async (
 setProject(data);
 
       alert("Project lifecycle updated successfully.");
-    } catch (error) {
-      console.error("Failed to update lifecycle:", error);
-      alert("Failed to update lifecycle.");
-    }
+    }  catch (error) {
+  console.error("Failed to update lifecycle:", error);
+
+  alert(
+    error instanceof Error
+      ? error.message
+      : "Failed to update lifecycle."
+  );
+}
   };
 
   if (loading) {

@@ -15,6 +15,17 @@ interface Project {
   preProjectStage?: string | null;
   createdAt: string;
 }
+interface ProjectReview {
+  id: number;
+  projectId: number;
+  reviewType: "PMRB" | "EB";
+  scheduledAt: string;
+  completedAt: string | null;
+  status: string;
+  displayStatus?: string;
+  remarks: string | null;
+  projectName?: string;
+}
 
 const lifecycleStages = [
   { name: "Proposal", phase: "PROPOSAL" },
@@ -62,50 +73,93 @@ function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [allReviews, setAllReviews] = useState<ProjectReview[]>([]);
+const [reviewsLoading, setReviewsLoading] = useState(true);
 
   const navigate = useNavigate();
 
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const token = localStorage.getItem("token");
+  const fetchProjects = async () => {
+    try {
+      const token = localStorage.getItem("token");
 
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/api/projects`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message || "Failed to fetch projects."
-          );
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/api/projects`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
+      );
 
-        setProjects(data);
-      } catch (error) {
-        console.error(
-          "Failed to fetch dashboard projects:",
-          error
-        );
+      const data = await response.json();
 
-        setError(
-          error instanceof Error
-            ? error.message
-            : "Failed to load dashboard."
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Failed to fetch projects."
         );
-      } finally {
-        setLoading(false);
       }
-    };
 
-    fetchProjects();
-  }, []);
+      setProjects(data);
+    } catch (error) {
+      console.error(
+        "Failed to fetch dashboard projects:",
+        error
+      );
+
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load dashboard."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchProjects();
+}, []);
+useEffect(() => {
+  if (loading) return;
+
+  const fetchAllReviews = async () => {
+    try {
+      const token = localStorage.getItem("token");
+
+      const reviewResponses = await Promise.all(
+        projects.map(async (project) => {
+          const response = await fetch(
+            `${import.meta.env.VITE_API_URL}/api/projects/${project.id}/reviews`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("Failed to fetch project reviews.");
+          }
+
+          const projectReviews: ProjectReview[] = await response.json();
+
+return projectReviews.map((review) => ({
+  ...review,
+  projectName: project.projectName,
+}));
+        })
+      );
+
+      setAllReviews(reviewResponses.flat());
+    } catch (error) {
+      console.error("Failed to fetch dashboard reviews:", error);
+    } finally {
+      setReviewsLoading(false);
+    }
+  };
+
+  fetchAllReviews();
+}, [projects, loading]);
 
   const totalProjects = projects.length;
 
@@ -127,6 +181,20 @@ function Dashboard() {
       (project) => project.phase === stage.phase
     ).length,
   }));
+  const completedReviews = allReviews.filter(
+  (review) => review.displayStatus === "COMPLETED" ||
+    review.status === "COMPLETED"
+).length;
+
+const delayedReviews = allReviews.filter(
+  (review) => review.displayStatus === "DELAYED"
+).length;
+
+const upcomingReviews = allReviews.filter(
+  (review) =>
+    review.displayStatus === "UPCOMING" ||
+    (!review.displayStatus && review.status === "UPCOMING")
+).length;
 
   const stats = [
     {
@@ -153,7 +221,31 @@ function Dashboard() {
       description: "Projects in closure or post-closure",
       icon: CheckCircle2,
     },
+    {
+  label: "Completed Projects",
+  value: completedProjects,
+  description: "Projects in closure or post-closure",
+  icon: CheckCircle2,
+},{
+  label: "Completed Reviews",
+  value: completedReviews,
+  description: "Reviews completed",
+  icon: CheckCircle2,
+},
+{
+  label: "Upcoming Reviews",
+  value: upcomingReviews,
+  description: "Reviews scheduled ahead",
+  icon: Clock3,
+},
+{
+  label: "Delayed Reviews",
+  value: delayedReviews,
+  description: "Reviews past their scheduled date",
+  icon: ListTodo,
+},
   ];
+  
 
   const recentProjects = [...projects]
     .sort(
@@ -343,6 +435,81 @@ function Dashboard() {
           </div>
         )}
       </div>
+      {/* Review Schedule */}
+<div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+  <div className="mb-6">
+    <h3 className="text-lg font-semibold text-slate-900">
+      Review Schedule
+    </h3>
+
+    <p className="mt-1 text-sm text-slate-500">
+      PMRB and EB reviews across all projects.
+    </p>
+  </div>
+
+  {reviewsLoading ? (
+    <p className="text-sm text-slate-500">
+      Loading reviews...
+    </p>
+  ) : allReviews.length === 0 ? (
+    <div className="rounded-lg bg-slate-50 px-4 py-6 text-center">
+      <p className="text-sm font-medium text-slate-700">
+        No reviews scheduled yet.
+      </p>
+    </div>
+  ) : (
+    <div className="divide-y divide-slate-200">
+      {allReviews
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.scheduledAt).getTime() -
+            new Date(b.scheduledAt).getTime()
+        )
+        .map((review) => (
+          <div
+            key={review.id}
+            className="flex items-center justify-between gap-4 py-4"
+          >
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                {review.reviewType} Review
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+  {review.projectName ?? "Project name unavailable"}
+</p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Scheduled: {formatDate(review.scheduledAt)}
+              </p>
+            </div>
+
+            {(() => {
+  const status = (
+    review.displayStatus ?? review.status
+  ).toUpperCase();
+
+  const statusStyles: Record<string, string> = {
+    COMPLETED: "bg-green-100 text-green-700",
+    UPCOMING: "bg-blue-100 text-blue-700",
+    DELAYED: "bg-red-100 text-red-700",
+  };
+
+  return (
+    <span
+      className={`rounded-full px-3 py-1 text-xs font-medium ${
+        statusStyles[status] ?? "bg-slate-100 text-slate-700"
+      }`}
+    >
+      {status.charAt(0) + status.slice(1).toLowerCase()}
+    </span>
+  );
+})()}
+          </div>
+        ))}
+    </div>
+  )}
+</div>
     </div>
   );
 }
