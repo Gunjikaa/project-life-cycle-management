@@ -1,23 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlertCircle, CheckCircle2, Clock3 } from "lucide-react";
-import { apiFetch } from "../services/api";
-
-export interface PendingAction {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  status: string;
-  priority: "HIGH" | "MEDIUM" | "LOW";
-  dueDate: string | null;
-  href: string;
-  project: {
-    id: number;
-    projectId: string;
-    projectName: string;
-  };
-}
+import {
+  fetchPendingActions,
+  type PendingAction,
+} from "../services/notificationService";
 
 const priorityStyles = {
   HIGH: "bg-red-50 text-red-700",
@@ -34,7 +21,7 @@ function PendingActions() {
   useEffect(() => {
     const loadActions = async () => {
       try {
-        const data = await apiFetch<PendingAction[]>("/api/pending-actions");
+        const data = await fetchPendingActions();
         setActions(data);
       } catch (loadError) {
         setError(

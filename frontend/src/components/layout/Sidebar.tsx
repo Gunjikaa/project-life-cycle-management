@@ -23,6 +23,7 @@ const navigation = [
       {
         label: "Notifications",
         icon: Bell,
+        path: "/notifications",
       },
     ],
   },

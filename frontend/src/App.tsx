@@ -11,6 +11,7 @@ import Users from "./pages/Users";
 import Settings from "./pages/Settings";
 import DocumentRepository from "./pages/DocumentRepository";
 import PendingActions from "./pages/PendingActions";
+import Notifications from "./pages/Notifications";
 
 function App() {
   return (
@@ -106,6 +107,16 @@ function App() {
     <ProtectedRoute>
       <DashboardLayout>
         <PendingActions />
+      </DashboardLayout>
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/notifications"
+  element={
+    <ProtectedRoute>
+      <DashboardLayout>
+        <Notifications />
       </DashboardLayout>
     </ProtectedRoute>
   }
