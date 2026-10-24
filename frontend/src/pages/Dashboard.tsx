@@ -71,7 +71,7 @@ function Dashboard() {
         const token = localStorage.getItem("token");
 
         const response = await fetch(
-          "http://localhost:5000/api/projects",
+          `${import.meta.env.VITE_API_URL}/api/projects`,
           {
             headers: {
               Authorization: `Bearer ${token}`,

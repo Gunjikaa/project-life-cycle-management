@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { apiFetch } from "../services/api";
 interface Project {
   id: number;
   projectId: string;
@@ -69,10 +70,16 @@ function Projects() {
   const [searchParams] = useSearchParams();
 
   const [projects, setProjects] = useState<Project[]>([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(
+  searchParams.get("search") || ""
+);
   const [selectedPhase, setSelectedPhase] = useState(
     searchParams.get("phase") || "ALL"
   );
+  useEffect(() => {
+  setSearch(searchParams.get("search") || "");
+  setSelectedPhase(searchParams.get("phase") || "ALL");
+}, [searchParams]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -82,26 +89,10 @@ function Projects() {
         setLoading(true);
         setError("");
 
-        const token = localStorage.getItem("token");
+        
 
-        const response = await fetch(
-          "http://localhost:5000/api/projects",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message || "Failed to fetch projects."
-          );
-        }
-
-        setProjects(data);
+        const data = await apiFetch("/api/projects");
+setProjects(data);
       } catch (error) {
         console.error("Failed to fetch projects:", error);
 

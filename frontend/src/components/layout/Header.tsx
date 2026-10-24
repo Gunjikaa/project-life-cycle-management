@@ -1,6 +1,10 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bell, LogOut, Search } from "lucide-react";
 
 function Header() {
+  const navigate = useNavigate();
+  const [search, setSearch] = useState("");
   const handleLogout = () => {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
@@ -16,15 +20,33 @@ function Header() {
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 rounded-lg border bg-slate-50 px-3 py-2">
-            <Search size={18} className="text-slate-400" />
+          <form
+  onSubmit={(event) => {
+    event.preventDefault();
 
-            <input
-              type="text"
-              placeholder="Search..."
-              className="w-48 bg-transparent text-sm outline-none placeholder:text-slate-400"
-            />
-          </div>
+    const searchText = search.trim();
+
+    if (!searchText) {
+      navigate("/projects");
+      return;
+    }
+
+    navigate(
+      `/projects?search=${encodeURIComponent(searchText)}`
+    );
+  }}
+  className="flex items-center gap-2 rounded-lg border bg-slate-50 px-3 py-2"
+>
+  <Search size={18} className="text-slate-400" />
+
+  <input
+    type="text"
+    value={search}
+    onChange={(event) => setSearch(event.target.value)}
+    placeholder="Search projects..."
+    className="w-48 bg-transparent text-sm outline-none placeholder:text-slate-400"
+  />
+</form>
 
           <button
             type="button"

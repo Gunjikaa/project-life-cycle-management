@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-
+import { apiFetch } from "../services/api";
 interface Project {
   id: number;
   projectId: string;
@@ -18,6 +18,78 @@ interface Project {
   updatedAt: string;
 }
 
+interface Approval {
+  id: number;
+  decision: string;
+  remarks?: string | null;
+  decidedAt?: string | null;
+  approverId: number;
+}
+interface ActivityDocument {
+  id: number;
+  fileName: string;
+  fileSize: number | null;
+  createdAt: string;
+}
+
+interface WorkflowActivity {
+  id: number;
+  activityType: string;
+  status: string;
+  remarks?: string | null;
+  createdAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  approvals?: Approval[];
+  documents?: ActivityDocument[];
+}
+interface ProjectReview {
+  id: number;
+  projectId: number;
+  reviewType: "PMRB" | "EB";
+  scheduledAt: string;
+  completedAt: string | null;
+  status: string;
+  displayStatus?: string;
+  remarks: string | null;
+}
+
+const formatActivityName = (value: string) => {
+  const labels: Record<string, string> = {
+    FORECAST: "Forecast",
+    CCM: "CCM",
+    TIEC: "TIEC",
+    CEC: "CEC",
+    AON: "AoN",
+    SOC: "SoC",
+    COSTING: "Costing",
+    ADDIFA_CONCURRENCE: "AddIFA Concurrence",
+    SECRETARY_SANCTION: "Secretary DDR&D Sanction",
+    GL_ISSUE: "GL Issue",
+    PROJECT_SANCTION: "Project Sanction",
+    PROCUREMENT: "Procurement",
+    MONITORING_REVIEW: "Monitoring & Review",
+    PMRB_REVIEW: "PMRB Review",
+    EB_REVIEW: "EB Review",
+    INDEPENDENT_EVALUATION: "Independent Evaluation",
+    TECHNICAL_CLOSURE: "Technical Closure",
+    ADMINISTRATIVE_CLOSURE: "Administrative Closure",
+    TS_FINANCIAL_CLOSURE: "TS / Financial Closure",
+    CDA_SUBMISSION: "CDA Submission",
+    CFA_APPROVAL: "CFA Approval",
+    PENDING: "Pending",
+    IN_PROGRESS: "In Progress",
+    COMPLETED: "Completed",
+    RETURNED: "Returned",
+    APPROVED: "Approved",
+    REJECTED: "Rejected",
+  };
+
+  return labels[value] ?? value
+    .split("_")
+    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .join(" ");
+};
 const lifecycle = [
   "PROPOSAL",
   "PRE_PROJECT",
@@ -94,6 +166,37 @@ const getPhaseIndex = (phase: string) => {
 const getPreProjectStageIndex = (stage: string) => {
   return preProjectStages.indexOf(stage);
 };
+const downloadDocument = async (
+  documentId: number,
+  fileName: string
+) => {
+  try {
+    const response = await apiFetch(
+  `/api/documents/${documentId}/download`,
+  {},
+  true
+);
+
+    if (!response.ok) {
+      throw new Error("Failed to download document.");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error(error);
+    alert("Could not download the document. Please try again.");
+  }
+};
 
 function ProjectDetails() {
   const { id } = useParams();
@@ -104,6 +207,18 @@ function ProjectDetails() {
     useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activities, setActivities] = useState<WorkflowActivity[]>([]);
+const [activitiesLoading, setActivitiesLoading] = useState(true);
+const [activitiesError, setActivitiesError] = useState("");
+const [newActivityType, setNewActivityType] = useState("FORECAST");
+const [newActivityRemarks, setNewActivityRemarks] = useState("");
+const [creatingActivity, setCreatingActivity] = useState(false);
+const [reviews, setReviews] = useState<ProjectReview[]>([]);
+const [reviewsLoading, setReviewsLoading] = useState(true);
+const [newReviewType, setNewReviewType] = useState<"PMRB" | "EB">("PMRB");
+const [newReviewDate, setNewReviewDate] = useState("");
+const [newReviewRemarks, setNewReviewRemarks] = useState("");
+const [creatingReview, setCreatingReview] = useState(false);
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -113,35 +228,28 @@ function ProjectDetails() {
 
         const token = localStorage.getItem("token");
 
-        const response = await fetch(
-          "http://localhost:5000/api/projects",
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
+const response = await fetch(
+  `${import.meta.env.VITE_API_URL}/api/projects`,
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+);
 
-        const projects: Project[] = await response.json();
+const projects = await response.json();
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch project.");
-        }
+if (response.ok) {
+  const foundProject = projects.find(
+    (item: any) => item.id === Number(id)
+  );
 
-        const foundProject = projects.find(
-          (item) => item.id === Number(id)
-        );
-
-        if (!foundProject) {
-          setError("Project not found.");
-          return;
-        }
-
-        setProject(foundProject);
-        setSelectedPhase(foundProject.phase);
-        setSelectedPreProjectStage(
-          foundProject.preProjectStage || ""
-        );
+  setProject(foundProject);
+  setSelectedPhase(foundProject.phase);
+  setSelectedPreProjectStage(
+    foundProject.preProjectStage || ""
+  );
+}
       } catch (error) {
         console.error("Failed to fetch project:", error);
 
@@ -157,6 +265,201 @@ function ProjectDetails() {
 
     fetchProject();
   }, [id]);
+useEffect(() => {
+  if (!id) return;
+
+  const fetchActivities = async () => {
+    try {
+      setActivitiesLoading(true);
+      setActivitiesError("");
+
+      const data = await apiFetch(
+        `/api/projects/${id}/activities`
+      );
+
+      setActivities(data);
+    } catch (error) {
+      console.error("Failed to fetch activities:", error);
+
+      setActivitiesError(
+        error instanceof Error
+          ? error.message
+          : "Failed to fetch workflow activities."
+      );
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  fetchActivities();
+}, [id]);
+
+const createActivity = async () => {
+  if (!id) return;
+
+  try {
+    setCreatingActivity(true);
+
+    await apiFetch(`/api/projects/${id}/activities`, {
+      method: "POST",
+      body: JSON.stringify({
+        activityType: newActivityType,
+        remarks: newActivityRemarks.trim() || undefined,
+      }),
+    });
+
+    const updatedActivities = await apiFetch(
+      `/api/projects/${id}/activities`
+    );
+
+    setActivities(updatedActivities);
+    setNewActivityRemarks("");
+    setActivitiesError("");
+  } catch (error) {
+    console.error("Failed to create activity:", error);
+
+    setActivitiesError(
+      error instanceof Error
+        ? error.message
+        : "Failed to create workflow activity."
+    );
+  } finally {
+    setCreatingActivity(false);
+  }
+};
+useEffect(() => {
+  void fetchReviews();
+}, [id]);
+const fetchReviews = async () => {
+  if (!id) return;
+
+  try {
+    setReviewsLoading(true);
+
+    const response = await apiFetch(`/api/projects/${id}/reviews`);
+    const data: ProjectReview[] = await response;
+
+    setReviews(data);
+  } catch (error) {
+    console.error("Failed to fetch reviews:", error);
+  } finally {
+    setReviewsLoading(false);
+  }
+};
+const scheduleReview = async () => {
+  if (!id || !newReviewDate) {
+    alert("Please select a review date.");
+    return;
+  }
+
+  try {
+    setCreatingReview(true);
+
+    await apiFetch(`/api/projects/${id}/reviews`, {
+      method: "POST",
+      body: JSON.stringify({
+        reviewType: newReviewType,
+        scheduledAt: new Date(`${newReviewDate}T12:00:00`).toISOString(),
+        remarks: newReviewRemarks,
+      }),
+    });
+
+    setNewReviewDate("");
+    setNewReviewRemarks("");
+    await fetchReviews();
+  } catch (error) {
+    console.error("Failed to schedule review:", error);
+    alert("Could not schedule the review.");
+  } finally {
+    setCreatingReview(false);
+  }
+};
+const completeReview = async (reviewId: number) => {
+  if (!id) return;
+
+  try {
+    await apiFetch(
+      `/api/projects/${id}/reviews/${reviewId}/complete`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({}),
+      }
+    );
+
+    await fetchReviews();
+  } catch (error) {
+    console.error("Failed to complete review:", error);
+    alert("Could not complete the review.");
+  }
+};
+const updateActivityStatus = async (
+  activityId: number,
+  status: string
+) => {
+  if (!id) return;
+
+  try {
+    await apiFetch(
+      `/api/projects/${id}/activities/${activityId}/status`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }
+    );
+
+    const updatedActivities = await apiFetch(
+      `/api/projects/${id}/activities`
+    );
+
+    setActivities(updatedActivities);
+    setActivitiesError("");
+  } catch (error) {
+    console.error("Failed to update activity status:", error);
+
+    setActivitiesError(
+      error instanceof Error
+        ? error.message
+        : "Failed to update activity status."
+    );
+  }
+};
+
+
+const submitApproval = async (
+  activityId: number,
+  decision: string,
+  remarks: string
+) => {
+  if (!id) return;
+
+  try {
+    await apiFetch(
+      `/api/projects/${id}/activities/${activityId}/approvals`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          decision,
+          remarks: remarks.trim() || undefined,
+        }),
+      }
+    );
+
+    const updatedActivities = await apiFetch(
+      `/api/projects/${id}/activities`
+    );
+
+    setActivities(updatedActivities);
+    setActivitiesError("");
+  } catch (error) {
+    console.error("Failed to submit approval:", error);
+
+    setActivitiesError(
+      error instanceof Error
+        ? error.message
+        : "Failed to submit approval."
+    );
+  }
+};
 
   const updateLifecycle = async () => {
     if (
@@ -168,34 +471,21 @@ function ProjectDetails() {
     }
 
     try {
-      const token = localStorage.getItem("token");
+      const data = await apiFetch(
+  `/api/projects/${id}/lifecycle`,
+  {
+    method: "PATCH",
+    body: JSON.stringify({
+      phase: selectedPhase,
+      preProjectStage:
+        selectedPhase === "PRE_PROJECT"
+          ? selectedPreProjectStage
+          : null,
+    }),
+  }
+);
 
-      const response = await fetch(
-        `http://localhost:5000/api/projects/${id}/lifecycle`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            phase: selectedPhase,
-            preProjectStage:
-              selectedPhase === "PRE_PROJECT"
-                ? selectedPreProjectStage
-                : null,
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        alert(data.message || "Failed to update lifecycle.");
-        return;
-      }
-
-      setProject(data);
+setProject(data);
 
       alert("Project lifecycle updated successfully.");
     } catch (error) {
@@ -541,6 +831,387 @@ function ProjectDetails() {
           })}
         </div>
       </div>
+  
+{/* Review Calendar */}
+<div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+  <h3 className="text-lg font-semibold text-slate-900">
+    Review Calendar
+  </h3>
+
+  <p className="mt-1 text-sm text-slate-500">
+    PMRB reviews are planned quarterly and EB reviews every six months.
+  </p>
+
+  {reviewsLoading ? (
+    <p className="mt-4 text-sm text-slate-500">Loading reviews...</p>
+  ) : reviews.length === 0 ? (
+    <p className="mt-4 text-sm text-slate-500">
+      No reviews scheduled for this project yet.
+    </p>
+  ) : (
+    <div className="mt-4 space-y-3">
+      {reviews.map((review) => (
+        <div
+          key={review.id}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 p-4"
+        >
+          <div>
+            <p className="font-medium text-slate-900">
+              {review.reviewType} Review
+            </p>
+            <p className="mt-1 text-sm text-slate-600">
+              Scheduled: {formatDate(review.scheduledAt)}
+            </p>
+            {review.remarks && (
+              <p className="mt-1 text-sm text-slate-500">
+                {review.remarks}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+              review.displayStatus === "COMPLETED"
+                ? "bg-green-50 text-green-700"
+                : review.displayStatus === "DELAYED"
+                  ? "bg-red-50 text-red-700"
+                  : "bg-amber-50 text-amber-700"
+            }`}>
+              {review.displayStatus ?? review.status}
+            </span>
+            {review.displayStatus !== "COMPLETED" &&
+  review.status !== "COMPLETED" && (
+    <button
+      type="button"
+      onClick={() => completeReview(review.id)}
+      className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+    >
+      Mark Completed
+    </button>
+  )}
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+
+  <div className="mt-6 border-t border-slate-100 pt-5">
+    <h4 className="font-semibold text-slate-900">Schedule a Review</h4>
+
+    <div className="mt-3 grid gap-4 md:grid-cols-2">
+      <div>
+        <label className="block text-sm font-medium text-slate-700">
+          Review Type
+        </label>
+        <select
+          value={newReviewType}
+          onChange={(event) =>
+            setNewReviewType(event.target.value as "PMRB" | "EB")
+          }
+          className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+        >
+          <option value="PMRB">PMRB — Quarterly</option>
+          <option value="EB">EB — Every six months</option>
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-slate-700">
+          Scheduled Date
+        </label>
+        <input
+          type="date"
+          value={newReviewDate}
+          onChange={(event) => setNewReviewDate(event.target.value)}
+          className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+        />
+      </div>
+    </div>
+
+    <div className="mt-4">
+      <label className="block text-sm font-medium text-slate-700">
+        Remarks (optional)
+      </label>
+      <textarea
+        value={newReviewRemarks}
+        onChange={(event) => setNewReviewRemarks(event.target.value)}
+        rows={2}
+        placeholder="Enter review details"
+        className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+      />
+    </div>
+
+    <button
+      type="button"
+      onClick={scheduleReview}
+      disabled={creatingReview}
+      className="mt-4 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+    >
+      {creatingReview ? "Scheduling..." : "Schedule Review"}
+    </button>
+  </div>
+</div>
+    
+{/* Workflow Activities */}
+<div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+  <h3 className="text-lg font-semibold text-slate-900">
+    Workflow Activities
+  </h3>
+
+  <p className="mt-1 text-sm text-slate-500">
+    Activity records associated with this project.
+  </p>
+
+  {activitiesLoading ? (
+    <p className="mt-5 text-sm text-slate-500">
+      Loading activities...
+    </p>
+  ) : activitiesError ? (
+    <p className="mt-5 text-sm text-red-600">
+      {activitiesError}
+    </p>
+  ) : activities.length === 0 ? (
+    <p className="mt-5 text-sm text-slate-500">
+      No workflow activities recorded yet.
+    </p>
+  ) : (
+    <div className="mt-5 space-y-4">
+      {activities.map((activity) => (
+        <div
+          key={activity.id}
+          className="rounded-lg border border-slate-200 p-4"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h4 className="font-medium text-slate-900">
+              {formatActivityName(activity.activityType)}
+            </h4>
+
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+  {formatActivityName(activity.status)}
+</span>
+
+<select
+  value={activity.status}
+  onChange={(event) =>
+    updateActivityStatus(activity.id, event.target.value)
+  }
+  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700"
+>
+  <option value="PENDING">Pending</option>
+  <option value="IN_PROGRESS">In Progress</option>
+  <option value="COMPLETED">Completed</option>
+  <option value="RETURNED">Returned</option>
+</select>
+
+          </div>
+
+          {activity.remarks && (
+            <p className="mt-2 text-sm text-slate-600">
+              {activity.remarks}
+            </p>
+          )}
+
+          <p className="mt-2 text-xs text-slate-400">
+            Created: {formatDate(activity.createdAt)}
+          </p>
+          
+<div className="mt-4 border-t border-slate-100 pt-4">
+  <h5 className="text-sm font-semibold text-slate-800">
+    Approval History
+  </h5>
+
+  {activity.approvals && activity.approvals.length > 0 ? (
+    <div className="mt-2 space-y-2">
+      {activity.approvals.map((approval) => (
+        <div
+          key={approval.id}
+          className="rounded-lg bg-slate-50 p-3"
+        >
+          <p className="text-sm font-medium text-slate-800">
+            {formatActivityName(approval.decision)}
+          </p>
+
+          {approval.remarks && (
+            <p className="mt-1 text-sm text-slate-600">
+              {approval.remarks}
+            </p>
+          )}
+
+          {approval.decidedAt && (
+            <p className="mt-1 text-xs text-slate-400">
+              {formatDate(approval.decidedAt)}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  ) : (
+    <p className="mt-2 text-sm text-slate-500">
+      No approval decisions recorded.
+    </p>
+  )}
+</div>
+<div className="mt-4 border-t border-slate-100 pt-4">
+  <h5 className="text-sm font-semibold text-slate-800">
+    Documents
+  </h5>
+
+  {activity.documents && activity.documents.length > 0 ? (
+    <div className="mt-2 space-y-2">
+      {activity.documents.map((document) => (
+        <div
+          key={document.id}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3"
+        >
+          <div>
+            <p className="text-sm font-medium text-slate-800">
+              {document.fileName}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Uploaded: {formatDate(document.createdAt)}
+              {document.fileSize != null &&
+                ` · ${(document.fileSize / 1024).toFixed(1)} KB`}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+  downloadDocument(document.id, document.fileName)
+}
+            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            Download
+          </button>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <p className="mt-2 text-sm text-slate-500">
+      No documents uploaded for this activity.
+    </p>
+  )}
+</div>
+<div className="mt-4 border-t border-slate-100 pt-4">
+  <h5 className="text-sm font-semibold text-slate-800">
+    Record Approval Decision
+  </h5>
+
+  <form
+    className="mt-3 space-y-3"
+    onSubmit={(event) => {
+      event.preventDefault();
+
+      const form = event.currentTarget;
+      const formData = new FormData(form);
+
+      void submitApproval(
+        activity.id,
+        String(formData.get("decision")),
+        String(formData.get("remarks") || "")
+      );
+
+      form.reset();
+    }}
+  >
+    <select
+      name="decision"
+      defaultValue="APPROVED"
+      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+    >
+      <option value="APPROVED">Approved</option>
+      <option value="REJECTED">Rejected</option>
+      <option value="RETURNED">Returned</option>
+    </select>
+
+    <textarea
+      name="remarks"
+      rows={2}
+      placeholder="Enter decision remarks (optional)"
+      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+    />
+
+    <button
+      type="submit"
+      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+    >
+      Submit Decision
+    </button>
+  </form>
+</div>
+
+        </div>
+      ))}
+    </div>
+  )}
+
+</div>
+
+<div className="mt-5 grid gap-4 md:grid-cols-2">
+  <div>
+    <label className="block text-sm font-medium text-slate-700">
+      Activity Type
+    </label>
+
+    <select
+      value={newActivityType}
+      onChange={(event) => setNewActivityType(event.target.value)}
+      className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm"
+    >
+      <option value="FORECAST">Forecast</option>
+      <option value="CCM">CCM</option>
+      <option value="TIEC">TIEC</option>
+      <option value="CEC">CEC</option>
+      <option value="AON">AoN</option>
+      <option value="SOC">SoC</option>
+      <option value="COSTING">Costing</option>
+      <option value="ADDIFA_CONCURRENCE">AddIFA Concurrence</option>
+      <option value="SECRETARY_SANCTION">Secretary Sanction</option>
+      <option value="GL_ISSUE">GL Issue</option>
+      <option value="PROJECT_SANCTION">Project Sanction</option>
+      <option value="PROCUREMENT">Procurement</option>
+      <option value="MONITORING_REVIEW">Monitoring & Review</option>
+<option value="PMRB_REVIEW">PMRB Review</option>
+<option value="EB_REVIEW">EB Review</option>
+<option value="INDEPENDENT_EVALUATION">
+  Independent Evaluation
+</option>
+<option value="TECHNICAL_CLOSURE">Technical Closure</option>
+<option value="ADMINISTRATIVE_CLOSURE">
+  Administrative Closure
+</option>
+<option value="TS_FINANCIAL_CLOSURE">
+  TS / Financial Closure
+</option>
+<option value="CDA_SUBMISSION">CDA Submission</option>
+<option value="CFA_APPROVAL">CFA Approval</option>
+    </select>
+  </div>
+
+  <div>
+    <label className="block text-sm font-medium text-slate-700">
+      Remarks (optional)
+    </label>
+
+    <input
+      type="text"
+      value={newActivityRemarks}
+      onChange={(event) => setNewActivityRemarks(event.target.value)}
+      placeholder="Enter activity remarks"
+      className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm"
+    />
+  </div>
+</div>
+
+<button
+  type="button"
+  onClick={createActivity}
+  disabled={creatingActivity}
+  className="mt-4 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+>
+  {creatingActivity ? "Creating..." : "Create Activity"}
+</button>
+
     </div>
   );
 }

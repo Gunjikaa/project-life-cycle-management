@@ -1,3 +1,4 @@
+import { apiFetch } from "./api";
 export interface CreateProjectData {
   projectId: string;
   projectName: string;
@@ -11,7 +12,7 @@ export interface CreateProjectData {
 }
 
 export async function createProject(data: CreateProjectData) {
-  const response = await fetch("http://localhost:5000/api/projects", {
+  const response = await apiFetch(`${import.meta.env.VITE_API_URL}/api/projects`, {
     method: "POST",
    headers: {
   "Content-Type": "application/json",

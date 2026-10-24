@@ -11,6 +11,40 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum WorkflowActivityType {
+  FORECAST
+  CCM
+  TIEC
+  CEC
+  AON
+  SOC
+  COSTING
+  ADDIFA_CONCURRENCE
+  SECRETARY_SANCTION
+  GL_ISSUE
+  PROJECT_SANCTION
+  PROCUREMENT
+
+  MONITORING_REVIEW
+  PMRB_REVIEW
+  EB_REVIEW
+  INDEPENDENT_EVALUATION
+
+  TECHNICAL_CLOSURE
+  ADMINISTRATIVE_CLOSURE
+  TS_FINANCIAL_CLOSURE
+  CDA_SUBMISSION
+  CFA_APPROVAL
+}
+
+enum WorkflowActivityStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  RETURNED
+}
+
 enum ProjectPhase {
   PROPOSAL
   PRE_PROJECT
@@ -29,34 +63,182 @@ enum PreProjectStage {
   CCM
   DMC
 }
+
 enum UserRole {
   ADMIN
   PROJECT_DIRECTOR
   REVIEWER
 }
+
 model Project {
-  id               Int      @id @default(autoincrement())
-  projectId        String   @unique
-  projectName      String
-  objective        String
-  projectDirector  String
-  concernedLab     String
-  estimatedCost    Float
-  startDate        DateTime
-  completionDate   DateTime
-  remarks          String?
-  phase           ProjectPhase    @default(PROPOSAL)
-preProjectStage PreProjectStage?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                 Int                @id @default(autoincrement())
+  projectId          String             @unique
+  workflowActivities WorkflowActivity[]
+  projectName        String
+  objective          String
+  projectDirector    String
+  concernedLab       String
+  estimatedCost      Float
+  startDate          DateTime
+  completionDate     DateTime
+  remarks            String?
+  phase              ProjectPhase       @default(PROPOSAL)
+  preProjectStage    PreProjectStage?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  documents          Document[]
+  reviews            Review[]
+  evaluations        Evaluation[]
+  closures           Closure[]
 }
+
 model User {
   id        Int      @id @default(autoincrement())
   name      String
   email     String   @unique
   password  String
   role      UserRole @default(PROJECT_DIRECTOR)
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  createdActivities WorkflowActivity[]
+  approvals         Approval[]
+  uploadedDocuments Document[]
+}
+
+model WorkflowActivity {
+  id           Int                    @id @default(autoincrement())
+  projectId    Int
+  activityType WorkflowActivityType
+  status       WorkflowActivityStatus @default(PENDING)
+  startedAt    DateTime?
+  completedAt  DateTime?
+  remarks      String?
+  createdById  Int
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  project   Project    @relation(fields: [projectId], references: [id])
+  createdBy User       @relation(fields: [createdById], references: [id])
+  approvals Approval[]
+  documents Document[]
+
+  @@index([projectId])
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+  RETURNED
+  PENDING
+}
+
+model Approval {
+  id                 Int              @id @default(autoincrement())
+  workflowActivityId Int
+  approverId         Int
+  decision           ApprovalDecision @default(PENDING)
+  remarks            String?
+  decidedAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  workflowActivity WorkflowActivity @relation(fields: [workflowActivityId], references: [id])
+  approver         User             @relation(fields: [approverId], references: [id])
+
+  @@index([workflowActivityId])
+  @@index([approverId])
+}
+
+model Document {
+  id                 Int      @id @default(autoincrement())
+  projectId          Int
+  workflowActivityId Int?
+  uploadedById       Int
+  fileName           String
+  filePath           String
+  mimeType           String?
+  fileSize           Int?
+  description        String?
+  createdAt          DateTime @default(now())
+
+  project          Project           @relation(fields: [projectId], references: [id])
+  workflowActivity WorkflowActivity? @relation(fields: [workflowActivityId], references: [id])
+  uploadedBy       User              @relation(fields: [uploadedById], references: [id])
+
+  @@index([projectId])
+  @@index([workflowActivityId])
+}
+
+enum ReviewType {
+  PMRB
+  EB
+}
+
+model Review {
+  id          Int        @id @default(autoincrement())
+  projectId   Int
+  reviewType  ReviewType
+  scheduledAt DateTime
+  completedAt DateTime?
+  status      String     @default("UPCOMING")
+  remarks     String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@index([scheduledAt])
+}
+
+model Evaluation {
+  id          Int       @id @default(autoincrement())
+  projectId   Int
+  evaluator   String?
+  evaluatedAt DateTime?
+  outcome     String?
+  remarks     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+enum ClosureType {
+  TECHNICAL
+  ADMINISTRATIVE
+  FINANCIAL
+}
+
+model Closure {
+  id          Int         @id @default(autoincrement())
+  projectId   Int
+  closureType ClosureType
+  status      String      @default("PENDING")
+  completedAt DateTime?
+  remarks     String?
+  approvedBy  String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  action     String
+  entityType String
+  entityId   String
+  details    String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }

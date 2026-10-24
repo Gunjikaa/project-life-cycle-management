@@ -40,7 +40,7 @@ function Users() {
         const token = localStorage.getItem("token");
 
         const response = await fetch(
-          "http://localhost:5000/api/users",
+          `${import.meta.env.VITE_API_URL}/api/users`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
