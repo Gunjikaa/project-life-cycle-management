@@ -200,6 +200,43 @@ if (
   });
 }
 
+// Prototype integration rule pending mentor confirmation: independent
+// evaluation must be complete before entering Closure, and all three closure
+// records must be complete before entering Post-Closure.
+if (currentProject.phase === "MONITORING" && phase === "CLOSURE") {
+  const completedEvaluation = await prisma.evaluation.findFirst({
+    where: { projectId, status: "COMPLETED" },
+    select: { id: true },
+  });
+
+  if (!completedEvaluation) {
+    return res.status(400).json({
+      message: "Complete the independent evaluation before entering Closure.",
+    });
+  }
+}
+
+if (currentProject.phase === "CLOSURE" && phase === "POST_CLOSURE") {
+  const completedClosures = await prisma.closure.findMany({
+    where: { projectId, status: "COMPLETED" },
+    select: { closureType: true },
+  });
+  const completedTypes = new Set(
+    completedClosures.map((closure) => closure.closureType)
+  );
+
+  if (
+    !completedTypes.has("TECHNICAL") ||
+    !completedTypes.has("ADMINISTRATIVE") ||
+    !completedTypes.has("FINANCIAL")
+  ) {
+    return res.status(400).json({
+      message:
+        "Complete technical, administrative, and financial closure before Post-Closure.",
+    });
+  }
+}
+
 
     const project = await prisma.project.update({
       where: {

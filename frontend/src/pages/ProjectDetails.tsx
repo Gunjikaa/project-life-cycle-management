@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { apiFetch } from "../services/api";
+import EvaluationClosurePanel from "../components/project/EvaluationClosurePanel";
 interface Project {
   id: number;
   projectId: string;
@@ -1029,6 +1030,14 @@ setProject(data);
   </div>
   )}
 </div>
+
+<EvaluationClosurePanel
+  project={project}
+  activities={activities}
+  reviews={reviews}
+  canManageWorkflow={canManageWorkflow}
+  canReview={canReview}
+/>
     
 {/* Workflow Activities */}
 <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

@@ -56,7 +56,7 @@ const upload = multer({
 router.post(
   "/projects/:projectId/activities/:activityId/documents",
   authenticateToken,
-  authorizeRoles("ADMIN", "PROJECT_DIRECTOR"),
+  authorizeRoles("ADMIN", "PROJECT_DIRECTOR", "REVIEWER"),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -88,7 +88,7 @@ router.post(
           id: activityId,
           projectId,
         },
-        select: { id: true },
+        select: { id: true, activityType: true },
       });
 
       if (!activity) {
@@ -96,6 +96,22 @@ router.post(
 
         return res.status(404).json({
           message: "Workflow activity not found for this project.",
+        });
+      }
+
+      const reviewerUploadTypes = [
+        "INDEPENDENT_EVALUATION",
+        "PMRB_REVIEW",
+        "EB_REVIEW",
+      ];
+
+      if (
+        req.user?.role === "REVIEWER" &&
+        !reviewerUploadTypes.includes(activity.activityType)
+      ) {
+        fs.unlinkSync(req.file.path);
+        return res.status(403).json({
+          message: "Reviewers can only upload evaluation or review documents.",
         });
       }
 

@@ -196,6 +196,7 @@ model Review {
 model Evaluation {
   id          Int       @id @default(autoincrement())
   projectId   Int
+  status      String    @default("PENDING")
   evaluator   String?
   evaluatedAt DateTime?
   outcome     String?
