@@ -16,6 +16,8 @@ const formatRole = (role: string) => {
       return "Project Director";
     case "REVIEWER":
       return "Reviewer";
+    case "VIEWER":
+      return "Viewer";
     default:
       return role;
   }

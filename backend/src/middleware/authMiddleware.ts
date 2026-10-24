@@ -3,8 +3,21 @@ import jwt from "jsonwebtoken";
 
 interface JwtPayload {
   userId: number;
-  role: string;
+  role: UserRole;
 }
+
+export type UserRole =
+  | "ADMIN"
+  | "PROJECT_DIRECTOR"
+  | "REVIEWER"
+  | "VIEWER";
+
+const validRoles: UserRole[] = [
+  "ADMIN",
+  "PROJECT_DIRECTOR",
+  "REVIEWER",
+  "VIEWER",
+];
 
 export const authenticateToken = (
   req: Request,
@@ -20,12 +33,26 @@ export const authenticateToken = (
   }
 
   const token = authHeader.split(" ")[1];
+  const jwtSecret = process.env.JWT_SECRET;
+
+  if (!jwtSecret) {
+    return res.status(500).json({
+      message: "Authentication is not configured.",
+    });
+  }
 
   try {
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET as string
-    ) as JwtPayload;
+    const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+
+    if (
+      !Number.isInteger(decoded.userId) ||
+      decoded.userId <= 0 ||
+      !validRoles.includes(decoded.role)
+    ) {
+      return res.status(403).json({
+        message: "Invalid authentication token.",
+      });
+    }
 
     req.user = decoded;
 
@@ -36,3 +63,14 @@ export const authenticateToken = (
     });
   }
 };
+
+export const authorizeRoles = (...allowedRoles: UserRole[]) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user || !allowedRoles.includes(req.user.role as UserRole)) {
+      return res.status(403).json({
+        message: "You do not have permission to perform this action.",
+      });
+    }
+
+    next();
+  };

@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import prisma from "../lib/prisma";
+import { recordAuditLog } from "../lib/audit";
 
 const router = Router();
 
@@ -12,6 +13,12 @@ router.post("/register", async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({
         message: "Name, email and password are required.",
+      });
+    }
+
+    if (role !== undefined) {
+      return res.status(400).json({
+        message: "Roles cannot be assigned during public registration.",
       });
     }
 
@@ -32,8 +39,16 @@ router.post("/register", async (req, res) => {
         name,
         email,
         password: hashedPassword,
-        role: role || "PROJECT_DIRECTOR",
+        role: "VIEWER",
       },
+    });
+
+    await recordAuditLog({
+      userId: user.id,
+      action: "USER_REGISTERED",
+      entityType: "User",
+      entityId: user.id,
+      details: { role: user.role },
     });
 
     return res.status(201).json({
@@ -81,16 +96,30 @@ router.post("/login", async (req, res) => {
         message: "Invalid email or password.",
       });
     }
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!jwtSecret) {
+      return res.status(500).json({
+        message: "Authentication is not configured.",
+      });
+    }
+
 const token = jwt.sign(
   {
     userId: user.id,
     role: user.role,
   },
-  process.env.JWT_SECRET as string,
+  jwtSecret,
   {
     expiresIn: "1d",
   }
 );
+    await recordAuditLog({
+      userId: user.id,
+      action: "USER_LOGGED_IN",
+      entityType: "User",
+      entityId: user.id,
+    });
     return res.json({
   message: "Login successful.",
   token,

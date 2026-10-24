@@ -31,6 +31,9 @@ Thumbs.db
 *.tmp
 *.temp
 
+# Runtime uploads (existing tracked files are intentionally not removed here)
+backend/uploads/
+
 # Prisma
 prisma/*.db
 prisma/*.db-journal

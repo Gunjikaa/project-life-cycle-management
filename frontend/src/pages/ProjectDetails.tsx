@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { apiFetch } from "../services/api";
 interface Project {
@@ -166,6 +167,15 @@ const getPhaseIndex = (phase: string) => {
 const getPreProjectStageIndex = (stage: string) => {
   return preProjectStages.indexOf(stage);
 };
+
+const getStoredUserRole = () => {
+  try {
+    const storedUser = localStorage.getItem("user");
+    return storedUser ? String(JSON.parse(storedUser).role || "") : "";
+  } catch {
+    return "";
+  }
+};
 const downloadDocument = async (
   documentId: number,
   fileName: string
@@ -219,6 +229,12 @@ const [newReviewType, setNewReviewType] = useState<"PMRB" | "EB">("PMRB");
 const [newReviewDate, setNewReviewDate] = useState("");
 const [newReviewRemarks, setNewReviewRemarks] = useState("");
 const [creatingReview, setCreatingReview] = useState(false);
+const [uploadingActivityId, setUploadingActivityId] = useState<number | null>(null);
+const currentUserRole = getStoredUserRole();
+const canManageWorkflow =
+  currentUserRole === "ADMIN" || currentUserRole === "PROJECT_DIRECTOR";
+const canReview =
+  currentUserRole === "ADMIN" || currentUserRole === "REVIEWER";
 
   useEffect(() => {
     const fetchProject = async () => {
@@ -226,30 +242,15 @@ const [creatingReview, setCreatingReview] = useState(false);
         setLoading(true);
         setError("");
 
-        const token = localStorage.getItem("token");
-
-const response = await fetch(
-  `${import.meta.env.VITE_API_URL}/api/projects`,
-  {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  }
-);
-
-const projects = await response.json();
-
-if (response.ok) {
-  const foundProject = projects.find(
-    (item: any) => item.id === Number(id)
-  );
+        const foundProject = await apiFetch<Project>(
+          `/api/projects/${id}`
+        );
 
   setProject(foundProject);
   setSelectedPhase(foundProject.phase);
   setSelectedPreProjectStage(
     foundProject.preProjectStage || ""
   );
-}
       } catch (error) {
         console.error("Failed to fetch project:", error);
 
@@ -327,25 +328,47 @@ const createActivity = async () => {
     setCreatingActivity(false);
   }
 };
-useEffect(() => {
-  void fetchReviews();
-}, [id]);
-const fetchReviews = async () => {
+const fetchReviews = useCallback(async () => {
   if (!id) return;
 
   try {
-    setReviewsLoading(true);
-
-    const response = await apiFetch(`/api/projects/${id}/reviews`);
-    const data: ProjectReview[] = await response;
-
+    const data = await apiFetch<ProjectReview[]>(
+      `/api/projects/${id}/reviews`
+    );
     setReviews(data);
   } catch (error) {
     console.error("Failed to fetch reviews:", error);
-  } finally {
-    setReviewsLoading(false);
   }
-};
+}, [id]);
+useEffect(() => {
+  if (!id) return;
+
+  let cancelled = false;
+
+  const loadReviews = async () => {
+    try {
+      const data = await apiFetch<ProjectReview[]>(
+        `/api/projects/${id}/reviews`
+      );
+
+      if (!cancelled) {
+        setReviews(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch reviews:", error);
+    } finally {
+      if (!cancelled) {
+        setReviewsLoading(false);
+      }
+    }
+  };
+
+  void loadReviews();
+
+  return () => {
+    cancelled = true;
+  };
+}, [id]);
 const scheduleReview = async () => {
   if (!id || !newReviewDate) {
     alert("Please select a review date.");
@@ -458,6 +481,51 @@ const submitApproval = async (
         ? error.message
         : "Failed to submit approval."
     );
+  }
+};
+
+const uploadDocument = async (
+  activityId: number,
+  event: FormEvent<HTMLFormElement>
+) => {
+  event.preventDefault();
+
+  if (!id) return;
+
+  const form = event.currentTarget;
+  const formData = new FormData(form);
+  const file = formData.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    setActivitiesError("Please select a document to upload.");
+    return;
+  }
+
+  try {
+    setUploadingActivityId(activityId);
+    setActivitiesError("");
+
+    await apiFetch(
+      `/api/projects/${id}/activities/${activityId}/documents`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+
+    const updatedActivities = await apiFetch<WorkflowActivity[]>(
+      `/api/projects/${id}/activities`
+    );
+
+    setActivities(updatedActivities);
+    form.reset();
+  } catch (error) {
+    console.error("Failed to upload document:", error);
+    setActivitiesError(
+      error instanceof Error ? error.message : "Failed to upload document."
+    );
+  } finally {
+    setUploadingActivityId(null);
   }
 };
 
@@ -664,6 +732,7 @@ setProject(data);
       </div>
 
       {/* Update Lifecycle */}
+      {canManageWorkflow && (
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-lg font-semibold text-slate-900">
           Update Lifecycle
@@ -729,6 +798,7 @@ setProject(data);
           </button>
         </div>
       </div>
+      )}
 
       {/* Project Lifecycle */}
       <div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -884,7 +954,8 @@ setProject(data);
             }`}>
               {review.displayStatus ?? review.status}
             </span>
-            {review.displayStatus !== "COMPLETED" &&
+            {canReview &&
+  review.displayStatus !== "COMPLETED" &&
   review.status !== "COMPLETED" && (
     <button
       type="button"
@@ -900,6 +971,7 @@ setProject(data);
     </div>
   )}
 
+  {canManageWorkflow && (
   <div className="mt-6 border-t border-slate-100 pt-5">
     <h4 className="font-semibold text-slate-900">Schedule a Review</h4>
 
@@ -955,6 +1027,7 @@ setProject(data);
       {creatingReview ? "Scheduling..." : "Schedule Review"}
     </button>
   </div>
+  )}
 </div>
     
 {/* Workflow Activities */}
@@ -995,6 +1068,7 @@ setProject(data);
   {formatActivityName(activity.status)}
 </span>
 
+{canManageWorkflow && (
 <select
   value={activity.status}
   onChange={(event) =>
@@ -1007,6 +1081,7 @@ setProject(data);
   <option value="COMPLETED">Completed</option>
   <option value="RETURNED">Returned</option>
 </select>
+)}
 
           </div>
 
@@ -1055,6 +1130,7 @@ setProject(data);
       No approval decisions recorded.
     </p>
   )}
+
 </div>
 <div className="mt-4 border-t border-slate-100 pt-4">
   <h5 className="text-sm font-semibold text-slate-800">
@@ -1096,7 +1172,36 @@ setProject(data);
       No documents uploaded for this activity.
     </p>
   )}
+
+  {canManageWorkflow && (
+    <form
+      className="mt-3 space-y-3 rounded-lg border border-dashed border-slate-300 p-3"
+      onSubmit={(event) => void uploadDocument(activity.id, event)}
+    >
+      <input
+        type="file"
+        name="file"
+        required
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+        className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700"
+      />
+      <input
+        type="text"
+        name="description"
+        placeholder="Document description (optional)"
+        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+      />
+      <button
+        type="submit"
+        disabled={uploadingActivityId === activity.id}
+        className="rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-white hover:bg-slate-900 disabled:opacity-60"
+      >
+        {uploadingActivityId === activity.id ? "Uploading..." : "Upload Document"}
+      </button>
+    </form>
+  )}
 </div>
+{canReview && (
 <div className="mt-4 border-t border-slate-100 pt-4">
   <h5 className="text-sm font-semibold text-slate-800">
     Record Approval Decision
@@ -1144,6 +1249,7 @@ setProject(data);
     </button>
   </form>
 </div>
+)}
 
         </div>
       ))}
@@ -1152,6 +1258,8 @@ setProject(data);
 
 </div>
 
+{canManageWorkflow && (
+<div>
 <div className="mt-5 grid gap-4 md:grid-cols-2">
   <div>
     <label className="block text-sm font-medium text-slate-700">
@@ -1216,6 +1324,8 @@ setProject(data);
 >
   {creatingActivity ? "Creating..." : "Create Activity"}
 </button>
+</div>
+)}
 
     </div>
   );

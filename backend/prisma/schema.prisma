@@ -68,6 +68,7 @@ enum UserRole {
   ADMIN
   PROJECT_DIRECTOR
   REVIEWER
+  VIEWER
 }
 
 model Project {

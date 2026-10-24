@@ -3,8 +3,12 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { authenticateToken } from "../middleware/authMiddleware";
+import {
+  authenticateToken,
+  authorizeRoles,
+} from "../middleware/authMiddleware";
 import prisma from "../lib/prisma";
+import { recordAuditLog } from "../lib/audit";
 
 const router = Router();
 
@@ -52,6 +56,7 @@ const upload = multer({
 router.post(
   "/projects/:projectId/activities/:activityId/documents",
   authenticateToken,
+  authorizeRoles("ADMIN", "PROJECT_DIRECTOR"),
   upload.single("file"),
   async (req, res) => {
     try {
@@ -110,6 +115,14 @@ router.post(
         },
       });
 
+      await recordAuditLog({
+        userId,
+        action: "DOCUMENT_UPLOADED",
+        entityType: "Document",
+        entityId: document.id,
+        details: { projectId, activityId, fileName: document.fileName },
+      });
+
       return res.status(201).json(document);
     } catch (error) {
       console.error(error);
@@ -127,6 +140,7 @@ router.post(
 router.get(
   "/documents/:documentId/download",
   authenticateToken,
+  authorizeRoles("ADMIN", "PROJECT_DIRECTOR", "REVIEWER"),
   async (req, res) => {
     try {
       const documentId = Number(req.params.documentId);
@@ -147,17 +161,36 @@ router.get(
         });
       }
 
-      const filePath = path.resolve(
-        process.cwd(),
-        "uploads",
-        path.basename(document.filePath)
-      );
+      const storedFileName = path.basename(document.filePath);
+
+      if (storedFileName !== document.filePath) {
+        return res.status(400).json({
+          message: "Invalid stored document path.",
+        });
+      }
+
+      const filePath = path.resolve(uploadDirectory, storedFileName);
+      const relativePath = path.relative(uploadDirectory, filePath);
+
+      if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+        return res.status(400).json({
+          message: "Invalid stored document path.",
+        });
+      }
 
       if (!fs.existsSync(filePath)) {
         return res.status(404).json({
           message: "Stored file not found.",
         });
       }
+
+      await recordAuditLog({
+        userId: req.user?.userId,
+        action: "DOCUMENT_DOWNLOADED",
+        entityType: "Document",
+        entityId: document.id,
+        details: { projectId: document.projectId },
+      });
 
       return res.download(filePath, document.fileName);
     } catch (error) {

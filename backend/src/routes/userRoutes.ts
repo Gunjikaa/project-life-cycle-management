@@ -1,10 +1,17 @@
 import { Router } from "express";
 import prisma from "../lib/prisma";
-import { authenticateToken } from "../middleware/authMiddleware";
+import {
+  authenticateToken,
+  authorizeRoles,
+} from "../middleware/authMiddleware";
 
 const router = Router();
 
-router.get("/", authenticateToken, async (_req, res) => {
+router.get(
+  "/",
+  authenticateToken,
+  authorizeRoles("ADMIN"),
+  async (_req, res) => {
   try {
     const users = await prisma.user.findMany({
       select: {
@@ -27,6 +34,7 @@ router.get("/", authenticateToken, async (_req, res) => {
       message: "Failed to fetch users.",
     });
   }
-});
+  }
+);
 
 export default router;

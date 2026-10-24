@@ -1,8 +1,14 @@
-import { authenticateToken } from "../middleware/authMiddleware";
+import {
+  authenticateToken,
+  authorizeRoles,
+} from "../middleware/authMiddleware";
 import { Router } from "express";
 import prisma from "../lib/prisma";
+import { recordAuditLog } from "../lib/audit";
 
 const router = Router();
+const projectManagerOnly = authorizeRoles("ADMIN", "PROJECT_DIRECTOR");
+const reviewerOnly = authorizeRoles("ADMIN", "REVIEWER");
 router.get("/", authenticateToken, async (_req, res) => {
   try {
     const projects = await prisma.project.findMany({
@@ -21,7 +27,30 @@ router.get("/", authenticateToken, async (_req, res) => {
   }
 });
 
-router.post("/",authenticateToken, async (req, res) => {
+router.get("/:id", authenticateToken, async (req, res) => {
+  try {
+    const projectId = Number(req.params.id);
+
+    if (!Number.isInteger(projectId) || projectId <= 0) {
+      return res.status(400).json({ message: "Invalid project ID." });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      return res.status(404).json({ message: "Project not found." });
+    }
+
+    return res.json(project);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to fetch project." });
+  }
+});
+
+router.post("/", authenticateToken, projectManagerOnly, async (req, res) => {
   try {
     const {
       projectId,
@@ -64,6 +93,14 @@ router.post("/",authenticateToken, async (req, res) => {
       },
     });
 
+    await recordAuditLog({
+      userId: req.user?.userId,
+      action: "PROJECT_CREATED",
+      entityType: "Project",
+      entityId: project.id,
+      details: { projectId: project.projectId },
+    });
+
     return res.status(201).json(project);
   } catch (error: any) {
   console.error(error);
@@ -79,7 +116,11 @@ router.post("/",authenticateToken, async (req, res) => {
   });
 }
 });
-router.patch("/:id/lifecycle", authenticateToken, async (req, res) => {
+router.patch(
+  "/:id/lifecycle",
+  authenticateToken,
+  projectManagerOnly,
+  async (req, res) => {
   try {
     const { phase, preProjectStage } = req.body;
 
@@ -170,6 +211,18 @@ if (
       },
     });
 
+    await recordAuditLog({
+      userId: req.user?.userId,
+      action: "PROJECT_LIFECYCLE_UPDATED",
+      entityType: "Project",
+      entityId: project.id,
+      details: {
+        previousPhase: currentProject.phase,
+        phase: project.phase,
+        preProjectStage: project.preProjectStage,
+      },
+    });
+
     return res.json(project);
   } catch (error) {
     console.error(error);
@@ -229,7 +282,11 @@ router.get("/:id/activities", authenticateToken, async (req, res) => {
 });
 
 
-router.post("/:id/activities", authenticateToken, async (req, res) => {
+router.post(
+  "/:id/activities",
+  authenticateToken,
+  projectManagerOnly,
+  async (req, res) => {
   try {
     const projectId = Number(req.params.id);
     const { activityType, remarks } = req.body;
@@ -299,6 +356,14 @@ router.post("/:id/activities", authenticateToken, async (req, res) => {
       },
     });
 
+    await recordAuditLog({
+      userId,
+      action: "WORKFLOW_ACTIVITY_CREATED",
+      entityType: "WorkflowActivity",
+      entityId: activity.id,
+      details: { projectId, activityType: activity.activityType },
+    });
+
     return res.status(201).json(activity);
   } catch (error) {
     console.error(error);
@@ -313,6 +378,7 @@ router.post("/:id/activities", authenticateToken, async (req, res) => {
 router.patch(
   "/:id/activities/:activityId/status",
   authenticateToken,
+  projectManagerOnly,
   async (req, res) => {
     try {
       const projectId = Number(req.params.id);
@@ -375,6 +441,18 @@ router.patch(
         },
       });
 
+      await recordAuditLog({
+        userId: req.user?.userId,
+        action: "WORKFLOW_ACTIVITY_STATUS_UPDATED",
+        entityType: "WorkflowActivity",
+        entityId: updatedActivity.id,
+        details: {
+          projectId,
+          previousStatus: activity.status,
+          status: updatedActivity.status,
+        },
+      });
+
       return res.json(updatedActivity);
     } catch (error) {
       console.error(error);
@@ -389,6 +467,7 @@ router.patch(
 router.post(
   "/:id/activities/:activityId/approvals",
   authenticateToken,
+  reviewerOnly,
   async (req, res) => {
     try {
       const projectId = Number(req.params.id);
@@ -448,6 +527,14 @@ router.post(
         },
       });
 
+      await recordAuditLog({
+        userId: approverId,
+        action: "APPROVAL_RECORDED",
+        entityType: "Approval",
+        entityId: approval.id,
+        details: { projectId, activityId, decision: approval.decision },
+      });
+
       return res.status(201).json(approval);
     } catch (error) {
       console.error(error);
@@ -458,7 +545,11 @@ router.post(
     }
   }
 );
-router.post("/:id/reviews", authenticateToken, async (req, res) => {
+router.post(
+  "/:id/reviews",
+  authenticateToken,
+  projectManagerOnly,
+  async (req, res) => {
   try {
     const projectId = Number(req.params.id);
     const { reviewType, scheduledAt, remarks } = req.body;
@@ -497,6 +588,14 @@ router.post("/:id/reviews", authenticateToken, async (req, res) => {
         scheduledAt: date,
         remarks: typeof remarks === "string" ? remarks.trim() || null : null,
       },
+    });
+
+    await recordAuditLog({
+      userId: req.user?.userId,
+      action: "REVIEW_SCHEDULED",
+      entityType: "Review",
+      entityId: review.id,
+      details: { projectId, reviewType: review.reviewType },
     });
 
     return res.status(201).json(review);
@@ -564,6 +663,7 @@ router.get("/:id/reviews", authenticateToken, async (req, res) => {
 router.patch(
   "/:id/reviews/:reviewId/complete",
   authenticateToken,
+  reviewerOnly,
   async (req, res) => {
     try {
       const projectId = Number(req.params.id);
@@ -649,15 +749,17 @@ router.patch(
 
         return completedReview;
       });
-      const savedReviews = await prisma.review.findMany({
-  where: {
-    projectId,
-    reviewType: review.reviewType,
-  },
-  orderBy: {
-    scheduledAt: "asc",
-  },
-});
+      await recordAuditLog({
+        userId: req.user?.userId,
+        action: "REVIEW_COMPLETED",
+        entityType: "Review",
+        entityId: updatedReview.id,
+        details: {
+          projectId,
+          reviewType: updatedReview.reviewType,
+          nextScheduledAt: nextScheduledAt.toISOString(),
+        },
+      });
 
 
       return res.json({

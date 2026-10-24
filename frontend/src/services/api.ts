@@ -1,5 +1,28 @@
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+
+function buildApiUrl(endpoint: string) {
+  if (/^https?:\/\//i.test(endpoint)) {
+    return endpoint;
+  }
+
+  const normalizedEndpoint = endpoint.startsWith("/")
+    ? endpoint
+    : `/${endpoint}`;
+
+  return `${API_URL}${normalizedEndpoint}`;
+}
+
+export async function apiFetch<T = any>(
+  endpoint: string,
+  options?: RequestInit,
+  rawResponse?: false
+): Promise<T>;
+export async function apiFetch(
+  endpoint: string,
+  options: RequestInit,
+  rawResponse: true
+): Promise<Response>;
 
 export async function apiFetch(
   endpoint: string,
@@ -18,7 +41,7 @@ export async function apiFetch(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, {
+  const response = await fetch(buildApiUrl(endpoint), {
     ...options,
     headers,
   });
@@ -38,6 +61,10 @@ export async function apiFetch(
 
   if (rawResponse) {
     return response;
+  }
+
+  if (response.status === 204) {
+    return null;
   }
 
   return response.json();
