@@ -9,6 +9,8 @@ import Login from "./pages/Login";
 import ProjectDetails from "./pages/ProjectDetails";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
+import DocumentRepository from "./pages/DocumentRepository";
+import PendingActions from "./pages/PendingActions";
 
 function App() {
   return (
@@ -84,6 +86,26 @@ function App() {
     <ProtectedRoute>
       <DashboardLayout>
         <Settings />
+      </DashboardLayout>
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/documents"
+  element={
+    <ProtectedRoute>
+      <DashboardLayout>
+        <DocumentRepository />
+      </DashboardLayout>
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/pending-actions"
+  element={
+    <ProtectedRoute>
+      <DashboardLayout>
+        <PendingActions />
       </DashboardLayout>
     </ProtectedRoute>
   }

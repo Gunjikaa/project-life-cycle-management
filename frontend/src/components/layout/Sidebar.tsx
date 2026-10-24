@@ -52,6 +52,7 @@ const navigation = [
       {
         label: "Pending Actions",
         icon: CheckSquare,
+        path: "/pending-actions",
       },
     ],
   },
@@ -61,6 +62,7 @@ const navigation = [
       {
         label: "Document Repository",
         icon: FileText,
+        path: "/documents",
       },
     ],
   },

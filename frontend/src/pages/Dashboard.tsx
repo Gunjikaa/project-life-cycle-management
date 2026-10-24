@@ -6,6 +6,7 @@ import {
   ListTodo,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../services/api";
 
 interface Project {
   id: number;
@@ -75,6 +76,7 @@ function Dashboard() {
   const [error, setError] = useState("");
   const [allReviews, setAllReviews] = useState<ProjectReview[]>([]);
 const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [pendingActionsCount, setPendingActionsCount] = useState(0);
 
   const navigate = useNavigate();
 
@@ -161,6 +163,21 @@ return projectReviews.map((review) => ({
   fetchAllReviews();
 }, [projects, loading]);
 
+useEffect(() => {
+  const fetchPendingActions = async () => {
+    try {
+      const actions = await apiFetch<Array<{ id: string }>>(
+        "/api/pending-actions"
+      );
+      setPendingActionsCount(actions.length);
+    } catch (pendingError) {
+      console.error("Failed to fetch pending action count:", pendingError);
+    }
+  };
+
+  void fetchPendingActions();
+}, []);
+
   const totalProjects = projects.length;
 
   const activeProjects = projects.filter(
@@ -211,8 +228,8 @@ const upcomingReviews = allReviews.filter(
     },
     {
       label: "Pending Actions",
-      value: 0,
-      description: "Action tracking not implemented yet",
+      value: pendingActionsCount,
+      description: "Outstanding items for your role",
       icon: ListTodo,
     },
     {
@@ -222,11 +239,6 @@ const upcomingReviews = allReviews.filter(
       icon: CheckCircle2,
     },
     {
-  label: "Completed Projects",
-  value: completedProjects,
-  description: "Projects in closure or post-closure",
-  icon: CheckCircle2,
-},{
   label: "Completed Reviews",
   value: completedReviews,
   description: "Reviews completed",

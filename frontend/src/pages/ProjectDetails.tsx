@@ -530,6 +530,18 @@ const uploadDocument = async (
   }
 };
 
+useEffect(() => {
+  if (loading || !window.location.hash) return;
+
+  const timer = window.setTimeout(() => {
+    document
+      .querySelector(window.location.hash)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
+
+  return () => window.clearTimeout(timer);
+}, [loading]);
+
   const updateLifecycle = async () => {
     if (
       selectedPhase === "PRE_PROJECT" &&
@@ -909,7 +921,7 @@ setProject(data);
       </div>
   
 {/* Review Calendar */}
-<div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+<div id="review-calendar" className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
   <h3 className="text-lg font-semibold text-slate-900">
     Review Calendar
   </h3>
@@ -1031,6 +1043,7 @@ setProject(data);
   )}
 </div>
 
+<div id="evaluation-closure">
 <EvaluationClosurePanel
   project={project}
   activities={activities}
@@ -1038,9 +1051,10 @@ setProject(data);
   canManageWorkflow={canManageWorkflow}
   canReview={canReview}
 />
+</div>
     
 {/* Workflow Activities */}
-<div className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+<div id="workflow-activities" className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
   <h3 className="text-lg font-semibold text-slate-900">
     Workflow Activities
   </h3>
